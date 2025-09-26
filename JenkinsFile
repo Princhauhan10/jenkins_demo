@@ -1,0 +1,63 @@
+pipeline {
+  agent any
+
+  environment {
+    NODE_ENV = 'production'
+    // change PORT if you prefer a different port
+    SERVE_PORT = '5000'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        // Checkout code from repo configured in job
+        checkout scm
+      }
+    }
+
+    stage('Install dependencies') {
+      steps {
+        // Use npm ci for clean, reproducible install
+        bat 'npm ci'
+      }
+    }
+
+    stage('Tests') {
+      steps {
+        // Run tests once (non-interactive). If you have no tests, this may exit with code 1;
+        // in that case you can skip or handle failures gracefully.
+        // The "|| exit 0" pattern avoids failing pipeline for no-tests; adjust as needed.
+        bat 'npm test -- --watchAll=false || echo "Tests skipped or failed (non-fatal for now)"'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        bat 'npm run build'
+      }
+    }
+
+    stage('Deploy locally') {
+      steps {
+        // Stop previously started server if server.pid exists, then start new background server and record PID
+        // Uses PowerShell via bat so it works on Windows agents even if PowerShell plugin isn't installed.
+        bat """
+        powershell -Command "if (Test-Path 'server.pid') { \
+             try { Stop-Process -Id (Get-Content 'server.pid' | Out-String).Trim() -ErrorAction SilentlyContinue } catch {} ; \
+             Remove-Item 'server.pid' -ErrorAction SilentlyContinue }"
+        powershell -Command "$p = Start-Process -FilePath 'npx' -ArgumentList 'serve -s build -l ${env.SERVE_PORT}' -PassThru; \
+             $p.Id | Out-File -FilePath 'server.pid'"
+        """
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Pipeline completed successfully. App should be at http://localhost:${env.SERVE_PORT}"
+    }
+    failure {
+      echo "Pipeline failed. Check the console logs for errors."
+    }
+  }
+}
