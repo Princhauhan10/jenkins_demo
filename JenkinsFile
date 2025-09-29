@@ -39,7 +39,7 @@ pipeline {
                 script {
                     // Kill any previous node process (ignore errors if none found)
                     catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-                        bat 'taskkill /F /IM node.exe' || echo "No previous server is running"'
+                        bat '''taskkill /F /IM node.exe || echo "No previous server is running"'''
                     }
 
                     // Install serve globally (if not already installed)
