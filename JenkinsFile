@@ -35,21 +35,26 @@ pipeline {
         }
 
         stage('Deploy locally') {
-             steps {
+            steps {
                 script {
+                    // Kill any previous node process (ignore errors if none found)
                     catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-                    bat 'taskkill /F /IM node.exe'
+                        bat 'taskkill /F /IM node.exe'
                     }
+
+                    // Install serve globally (if not already installed)
+                    bat 'npm install -g serve'
+
+                    // Start the React production build
+                    bat "start cmd /c \"serve -s build -l %SERVE_PORT%\""
+
+                    echo "React app is now running at http://localhost:${env.SERVE_PORT}"
                 }
-
-                bat 'npm install -g serve'
-                bat 'start cmd /c "serve -s build -l %SERVE_PORT%"'
-
-                echo "React app is now running at http://localhost:${env.SERVE_PORT}"
-             }
+            }
         }
+    }
 
-
+    // Post actions must be **outside stages** but inside pipeline
     post {
         success {
             echo "Pipeline completed successfully. App should be at http://localhost:${env.SERVE_PORT}"
