@@ -35,16 +35,20 @@ pipeline {
         }
 
         stage('Deploy locally') {
-            steps {
-                // Try stopping old server, but continue if none exists
-                bat 'taskkill /F /IM node.exe || echo "No previous server running"'
-                echo "Build is ready. You can serve it with 'serve -s build' if needed."
-                // Optional: install and serve automatically (uncomment if you want)
+             steps {
+                script {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+                    bat 'taskkill /F /IM node.exe'
+                    }
+                }
+
                 bat 'npm install -g serve'
-                bat 'start cmd /c "serve -s build -l %SERVE_PORT%'
-            }
+                bat 'start cmd /c "serve -s build -l %SERVE_PORT%"'
+
+                echo "React app is now running at http://localhost:${env.SERVE_PORT}"
+             }
         }
-    }
+
 
     post {
         success {
