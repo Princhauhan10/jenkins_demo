@@ -1,9 +1,14 @@
 pipeline {
     agent any
 
-    // Define environment variables
+    // Environment variables
     environment {
-        SERVE_PORT = '3000'  // Port for local deployment info
+        SERVE_PORT = '3000'  // Port for local deployment
+    }
+
+    triggers {
+        // Only build on SCM changes
+        pollSCM('H/5 * * * *')  // optional: poll every 5 minutes; remove if using webhook
     }
 
     stages {
@@ -15,21 +20,18 @@ pipeline {
 
         stage('Install dependencies') {
             steps {
-                // Install node modules
                 bat 'npm ci'
             }
         }
 
         stage('Tests') {
             steps {
-                // Run tests; allow passing if no tests are found
                 bat 'npm test -- --watchAll=false --passWithNoTests'
             }
         }
 
         stage('Build') {
             steps {
-                // Create production build
                 bat 'npm run build'
             }
         }
@@ -37,16 +39,16 @@ pipeline {
         stage('Deploy locally') {
             steps {
                 script {
-                    // Kill any previous node process (ignore errors if none found)
+                    // Stop any existing server if running
                     catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-                        bat '''taskkill /F /IM node.exe || echo "No previous server is running"'''
+                        bat 'taskkill /F /IM node.exe || echo No previous server running'
                     }
 
-                    // Install serve globally (if not already installed)
+                    // Install serve globally if not installed
                     bat 'npm install -g serve'
 
-                    // Start server in background so  Jenkins doesn't exit 
-                    bat 'start /B serve -s build -l %SERVE_PORT%\'
+                    // Start server in background using Jenkins environment variable
+                    bat "start cmd /c serve -s build -l ${env.SERVE_PORT}"
 
                     echo "React app is now running at http://localhost:${env.SERVE_PORT}"
                 }
@@ -54,7 +56,6 @@ pipeline {
         }
     }
 
-    // Post actions must be **outside stages** but inside pipeline
     post {
         success {
             echo "Pipeline completed successfully. App should be at http://localhost:${env.SERVE_PORT}"
