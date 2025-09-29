@@ -36,7 +36,7 @@ pipeline {
 
         stage('Deploy locally') {
             steps {
-                // Stop old serve process if any (Windows example)
+                // Try stopping old server, but continue if none exists
                 bat 'taskkill /F /IM node.exe || echo "No previous server running"'
                 echo "Build is ready. You can serve it with 'serve -s build' if needed."
                 // Optional: install and serve automatically (uncomment if you want)
