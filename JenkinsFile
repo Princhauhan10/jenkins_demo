@@ -39,14 +39,14 @@ pipeline {
                 script {
                     // Kill any previous node process (ignore errors if none found)
                     catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-                        bat 'taskkill /F /IM node.exe'
+                        bat 'taskkill /F /IM node.exe' || echo "No previous server is running"'
                     }
 
                     // Install serve globally (if not already installed)
                     bat 'npm install -g serve'
 
-                    // Start the React production build
-                    bat "start cmd /c \"serve -s build -l %SERVE_PORT%\""
+                    // Start server in background so  Jenkins doesn't exit 
+                    bat 'start /B serve -s build -l %SERVE_PORT%\'
 
                     echo "React app is now running at http://localhost:${env.SERVE_PORT}"
                 }
