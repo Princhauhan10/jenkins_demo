@@ -1,61 +1,55 @@
 pipeline {
-  agent any
+    agent any
 
-  environment {
-    NODE_ENV = 'production'
-    // change PORT if you prefer a different port
-    SERVE_PORT = '5000'
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        // Checkout code from repo configured in job
-        checkout scm
-      }
+    // Define environment variables
+    environment {
+        SERVE_PORT = '3000'  // Port for local deployment info
     }
 
-    stage('Install dependencies') {
-      steps {
-        // Use npm ci for clean, reproducible install
-        bat 'npm ci'
-      }
+    stages {
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                // Install node modules
+                bat 'npm ci'
+            }
+        }
+
+        stage('Tests') {
+            steps {
+                // Run tests; allow passing if no tests are found
+                bat 'npm test -- --watchAll=false --passWithNoTests'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                // Create production build
+                bat 'npm run build'
+            }
+        }
+
+        stage('Deploy locally') {
+            steps {
+                echo "Build is ready. You can serve it with 'serve -s build' if needed."
+                // Optional: install and serve automatically (uncomment if you want)
+                // bat 'npm install -g serve'
+                // bat 'serve -s build -l %SERVE_PORT%'
+            }
+        }
     }
 
-    stage('Tests') {
-    steps {
-        bat 'npm test -- --watchAll=false --passWithNoTests'
-      }
-   }
-
-
-    stage('Build') {
-      steps {
-        bat 'npm run build'
-      }
+    post {
+        success {
+            echo "Pipeline completed successfully. App should be at http://localhost:${env.SERVE_PORT}"
+        }
+        failure {
+            echo "Pipeline failed. Check the console logs for errors."
+        }
     }
-
-    stage('Deploy locally') {
-      steps {
-        // Stop previously started server if server.pid exists, then start new background server and record PID
-        // Uses PowerShell via bat so it works on Windows agents even if PowerShell plugin isn't installed.
-        bat """
-        powershell -Command "if (Test-Path 'server.pid') { \
-             try { Stop-Process -Id (Get-Content 'server.pid' | Out-String).Trim() -ErrorAction SilentlyContinue } catch {} ; \
-             Remove-Item 'server.pid' -ErrorAction SilentlyContinue }"
-        powershell -Command "$p = Start-Process -FilePath 'npx' -ArgumentList 'serve -s build -l ${env.SERVE_PORT}' -PassThru; \
-             $p.Id | Out-File -FilePath 'server.pid'"
-        """
-      }
-    }
-  }
-
-  post {
-    success {
-      echo "Pipeline completed successfully. App should be at http://localhost:${env.SERVE_PORT}"
-    }
-    failure {
-      echo "Pipeline failed. Check the console logs for errors."
-    }
-  }
 }
