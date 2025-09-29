@@ -36,10 +36,12 @@ pipeline {
 
         stage('Deploy locally') {
             steps {
+                // Stop old serve process if any (Windows example)
+                bat 'taskkill /F /IM node.exe || echo "No previous server running"'
                 echo "Build is ready. You can serve it with 'serve -s build' if needed."
                 // Optional: install and serve automatically (uncomment if you want)
-                // bat 'npm install -g serve'
-                // bat 'serve -s build -l %SERVE_PORT%'
+                bat 'npm install -g serve'
+                bat 'start cmd /c "serve -s build -l %SERVE_PORT%'
             }
         }
     }
