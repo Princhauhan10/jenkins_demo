@@ -23,12 +23,11 @@ pipeline {
     }
 
     stage('Tests') {
-      steps {
-          bat '''
-          npm test -- --watchAll=false || echo "No tests found, continuing..."
-          '''
+    steps {
+        bat 'npm test -- --watchAll=false --passWithNoTests'
       }
-    }
+   }
+
 
     stage('Build') {
       steps {
