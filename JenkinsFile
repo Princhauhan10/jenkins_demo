@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // PM2_HOME will be created dynamically in the workspace
-        PM2_HOME = "${env.WORKSPACE}\\.pm2"
-        PATH = "${env.WORKSPACE}\\node_modules\\.bin;${env.PATH}"
+        PM2_HOME = "${WORKSPACE}\\.pm2"
     }
 
     stages {
@@ -17,12 +15,12 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 bat 'npm ci'
-                // Install PM2 locally in the workspace if not installed
+                // Ensure PM2 is installed locally
                 bat 'npm install pm2 --no-save'
             }
         }
 
-        stage('Tests') {
+        stage('Run Tests') {
             steps {
                 bat 'npm test -- --watchAll=false --passWithNoTests'
             }
@@ -40,23 +38,26 @@ pipeline {
                     // Ensure PM2_HOME exists
                     bat "if not exist %PM2_HOME% mkdir %PM2_HOME%"
 
-                    // Stop old process (ignore errors)
+                    // Stop old process if exists
                     bat 'npx pm2 delete react-app || exit 0'
 
-                    // Start React app accessible externally
-                    bat 'npx pm2 start serve --name react-app -- -s build -l 3000 -H 0.0.0.0'
+                    // Install serve locally in workspace
+                    bat 'npm install serve --no-save'
 
-                    // Save process list
+                    // Start React app via PM2, accessible externally
+                    bat 'npx pm2 start npx --name react-app -- serve -s build -l 3000 -H 0.0.0.0'
+
+                    // Save PM2 process list
                     bat 'npx pm2 save'
 
-                    // Create a startup script for Windows using a batch file in the workspace
+                    // Create startup batch file
                     bat '''
                     echo @echo off > "%WORKSPACE%\\pm2-startup.bat"
                     echo set PM2_HOME=%PM2_HOME% >> "%WORKSPACE%\\pm2-startup.bat"
                     echo npx pm2 resurrect >> "%WORKSPACE%\\pm2-startup.bat"
                     '''
 
-                    // Register Task Scheduler to run this batch at startup
+                    // Register Windows Task Scheduler for auto-start
                     bat """
                     powershell -Command "\$action = New-ScheduledTaskAction -Execute '${env.WORKSPACE}\\\\pm2-startup.bat'; \
                     \$trigger = New-ScheduledTaskTrigger -AtStartup; \
@@ -69,11 +70,14 @@ pipeline {
     }
 
     post {
-        success {
-            echo "✅ Pipeline succeeded. React app deployed with PM2, reachable externally, and will auto-start after reboot."
+        always {
+            echo 'Pipeline finished. Check PM2 to ensure the app is running.'
         }
         failure {
-            echo "❌ Pipeline failed. Check console logs."
+            echo '❌ Pipeline failed. Check the console logs.'
+        }
+        success {
+            echo '✅ Pipeline succeeded. React app is running via PM2.'
         }
     }
 }
