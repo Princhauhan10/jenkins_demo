@@ -2,7 +2,9 @@ pipeline {
     agent any
 
     environment {
-        SERVE_PORT = "3000"
+        NODE_HOME = "C:\\Program Files\\nodejs"  // Update if Node is installed elsewhere
+        PATH = "${env.NODE_HOME};${env.PATH}"
+        PM2_HOME = "C:\\pm2_home"                // PM2 will use this folder for logs & processes
     }
 
     stages {
@@ -33,11 +35,25 @@ pipeline {
         stage('Deploy with PM2') {
             steps {
                 script {
-                    // Kill old process if exists
+                    // Ensure PM2_HOME exists
+                    bat "if not exist %PM2_HOME% mkdir %PM2_HOME%"
+
+                    // Remove old process (ignore errors if not found)
                     bat 'npx pm2 delete react-app || exit 0'
 
-                    // Start new process with serve
+                    // Start new process using PM2_HOME
                     bat 'npx pm2 start serve --name react-app -- -s build -l 3000'
+
+                    // Save the PM2 process list
+                    bat 'npx pm2 save'
+
+                    // Register PM2 to run on Windows startup via Task Scheduler
+                    bat '''
+                    powershell -Command "$action = New-ScheduledTaskAction -Execute 'npx' -Argument 'pm2 resurrect'; \
+                    $trigger = New-ScheduledTaskTrigger -AtStartup; \
+                    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest; \
+                    Register-ScheduledTask -TaskName 'ReactAppPM2' -Action $action -Trigger $trigger -Principal $principal -Force"
+                    '''
                 }
             }
         }
@@ -45,10 +61,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline completed successfully. React app should be running at http://localhost:${env.SERVE_PORT}"
+            echo "✅ Pipeline succeeded. App deployed with PM2 and will auto-start on reboot."
         }
         failure {
-            echo "❌ Pipeline failed. Check the console logs for errors."
+            echo "❌ Pipeline failed. Check console logs."
         }
     }
 }
