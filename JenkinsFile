@@ -2,90 +2,77 @@ pipeline {
     agent any
 
     environment {
-        // PM2_HOME inside workspace for portability
-        PM2_HOME = "${WORKSPACE}\\.pm2"
+        REACT_APP_PORT = "3000"
+        BUILD_DIR = "${WORKSPACE}\\build"
+        TASK_NAME = "ReactAppScheduledTask"
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                // Checkout code from GitHub
                 checkout scm
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install dependencies') {
             steps {
-                // Install npm dependencies
                 bat 'npm ci'
-
-                // Install PM2 locally in workspace
-                bat 'npm install pm2 --no-save'
-
-                // Install serve to serve React build
                 bat 'npm install serve --no-save'
             }
         }
 
         stage('Run Tests') {
             steps {
-                // Run tests without watching for changes
                 bat 'npm test -- --watchAll=false --passWithNoTests'
             }
         }
 
         stage('Build') {
             steps {
-                // Build React app
                 bat 'npm run build'
             }
         }
 
-        stage('Deploy & Start App') {
+        stage('Deploy React App via PowerShell') {
             steps {
                 script {
-                    // Ensure PM2_HOME exists
-                    bat "if not exist %PM2_HOME% mkdir %PM2_HOME%"
-
-                    // Stop old app if exists
-                    bat 'npx pm2 delete react-app || exit 0'
-
-                    // Start React app using PM2, bind to all interfaces
-                    bat 'npx pm2 start serve --name react-app -- -s build -l 3000 -H 0.0.0.0'
-
-                    // Save PM2 process list
-                    bat 'npx pm2 save'
-
-                    // Create a portable batch file to resurrect PM2 on startup
-                    bat '''
-                    echo @echo off > "%WORKSPACE%\\pm2-startup.bat"
-                    echo set PM2_HOME=%PM2_HOME% >> "%WORKSPACE%\\pm2-startup.bat"
-                    echo npx pm2 resurrect >> "%WORKSPACE%\\pm2-startup.bat"
-                    '''
-
-                    // Register Task Scheduler to auto-start React app on reboot
+                    // Remove any previous scheduled task
                     bat """
-                    powershell -Command "\$action = New-ScheduledTaskAction -Execute '${env.WORKSPACE}\\\\pm2-startup.bat'; \
+                    powershell -Command "if (Get-ScheduledTask -TaskName '${TASK_NAME}' -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName '${TASK_NAME}' -Confirm:\$false }"
+                    """
+
+                    // Create a startup script in workspace
+                    bat """
+                    echo Start-Process npm -ArgumentList 'run','serve','-s','${BUILD_DIR}','-l','${REACT_APP_PORT}','-H','0.0.0.0' -NoNewWindow -PassThru > "${WORKSPACE}\\start-react-app.ps1"
+                    """
+
+                    // Register scheduled task to run at startup
+                    bat """
+                    powershell -Command "\
+                    \$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-File \\"${WORKSPACE}\\start-react-app.ps1\\"'; \
                     \$trigger = New-ScheduledTaskTrigger -AtStartup; \
                     \$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest; \
-                    Register-ScheduledTask -TaskName 'ReactAppPM2' -Action \$action -Trigger \$trigger -Principal \$principal -Force"
+                    Register-ScheduledTask -Action \$action -Trigger \$trigger -Principal \$principal -TaskName '${TASK_NAME}' -Description 'Start React App on Windows boot' -Force"
                     """
+
+                    // Start the app immediately
+                    bat "powershell -ExecutionPolicy Bypass -File \"${WORKSPACE}\\start-react-app.ps1\""
+
+                    echo "✅ React app deployed via PowerShell and scheduled to auto-start on reboot. Accessible externally on port ${REACT_APP_PORT}"
                 }
             }
         }
-
     }
 
     post {
         always {
-            echo 'Pipeline finished. Check PM2 to ensure the app is running.'
-        }
-        success {
-            echo '✅ Pipeline succeeded. React app is running via PM2.'
+            echo 'Pipeline finished.'
         }
         failure {
             echo '❌ Pipeline failed. Check console logs.'
+        }
+        success {
+            echo '✅ Pipeline succeeded. React app is running via PowerShell Scheduled Task.'
         }
     }
 }
