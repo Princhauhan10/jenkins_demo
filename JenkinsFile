@@ -1,14 +1,8 @@
 pipeline {
     agent any
 
-    // Environment variables
     environment {
-        SERVE_PORT = '3000'  // Port for local deployment
-    }
-
-    triggers {
-        // Only build on SCM changes
-        pollSCM('H/5 * * * *')  // optional: poll every 5 minutes; remove if using webhook
+        SERVE_PORT = '3000'
     }
 
     stages {
@@ -36,24 +30,27 @@ pipeline {
             }
         }
 
-       stage('Deploy locally') {
+        stage('Deploy with PM2') {
             steps {
-                 script {
-                     // Stop existing process if running
-                      bat 'pm2 delete react-app || exit 0'
+                script {
+                    // Install PM2 globally if not installed
+                    bat 'npm install -g pm2'
 
-                     // Start new process
-                     bat "pm2 start npx --name react-app -- serve -s build -l ${env.SERVE_PORT}"
+                    // Stop previous instance if running
+                    bat 'pm2 delete react-app || exit 0'
 
-            echo "React app is now running at http://localhost:${env.SERVE_PORT}"
+                    // Start new React server with PM2
+                    bat "pm2 start npx --name react-app -- serve -s build -l ${env.SERVE_PORT}"
+
+                    echo "✅ React app should now be running at http://localhost:${env.SERVE_PORT}"
+                }
+            }
         }
     }
-}
-
 
     post {
         success {
-            echo "Pipeline completed successfully. App should be at http://localhost:${env.SERVE_PORT}"
+            echo "Pipeline completed successfully."
         }
         failure {
             echo "Pipeline failed. Check the console logs for errors."
