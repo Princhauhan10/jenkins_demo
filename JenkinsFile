@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SERVE_PORT = '3000'
+        SERVE_PORT = "3000"
     }
 
     stages {
@@ -33,16 +33,11 @@ pipeline {
         stage('Deploy with PM2') {
             steps {
                 script {
-                    // Install PM2 globally if not installed
-                    bat 'npm install -g pm2'
+                    // Kill old process if exists
+                    bat 'npx pm2 delete react-app || exit 0'
 
-                    // Stop previous instance if running
-                    bat 'pm2 delete react-app || exit 0'
-
-                    // Start new React server with PM2
-                    bat "pm2 start npx --name react-app -- serve -s build -l ${env.SERVE_PORT}"
-
-                    echo "✅ React app should now be running at http://localhost:${env.SERVE_PORT}"
+                    // Start new process with serve
+                    bat 'npx pm2 start serve --name react-app -- -s build -l 3000'
                 }
             }
         }
@@ -50,10 +45,10 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline completed successfully."
+            echo "✅ Pipeline completed successfully. React app should be running at http://localhost:${env.SERVE_PORT}"
         }
         failure {
-            echo "Pipeline failed. Check the console logs for errors."
+            echo "❌ Pipeline failed. Check the console logs for errors."
         }
     }
 }
