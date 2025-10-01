@@ -2,62 +2,90 @@ pipeline {
     agent any
 
     environment {
-        NODE_HOME = "C:\\Program Files\\nodejs"   // Adjust if your Node.js path is different
-        PATH = "${env.NODE_HOME};${env.PATH}"
-        APP_HOME = "C:\\Apps\\react-build-pipeline" // Dedicated folder for your app
-        PM2_HOME = "${env.APP_HOME}\\.pm2"
-    }
-
-    triggers {
-        pollSCM('* * * * *') // Poll GitHub every minute (can be replaced by webhook for faster triggers)
+        // PM2_HOME inside workspace for portability
+        PM2_HOME = "${WORKSPACE}\\.pm2"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Princhauhan10/jenkins_demo.git'
+                // Checkout code from GitHub
+                checkout scm
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                bat "cd ${APP_HOME} && npm ci"
-                bat "cd ${APP_HOME} && npm install pm2 --no-save"
-                bat "cd ${APP_HOME} && npm install serve --no-save"
+                // Install npm dependencies
+                bat 'npm ci'
+
+                // Install PM2 locally in workspace
+                bat 'npm install pm2 --no-save'
+
+                // Install serve to serve React build
+                bat 'npm install serve --no-save'
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                // Run tests without watching for changes
+                bat 'npm test -- --watchAll=false --passWithNoTests'
             }
         }
 
         stage('Build') {
             steps {
-                bat "cd ${APP_HOME} && npm run build"
+                // Build React app
+                bat 'npm run build'
             }
         }
 
         stage('Deploy & Start App') {
             steps {
                 script {
-                    // Create PM2 home directory if not exists
-                    bat "if not exist ${PM2_HOME} mkdir ${PM2_HOME}"
+                    // Ensure PM2_HOME exists
+                    bat "if not exist %PM2_HOME% mkdir %PM2_HOME%"
 
-                    // Stop existing app if running
-                    bat "cd ${APP_HOME} && npx pm2 delete react-app || exit 0"
+                    // Stop old app if exists
+                    bat 'npx pm2 delete react-app || exit 0'
 
-                    // Start app serving build folder on port 3000, listen externally
-                    bat "cd ${APP_HOME} && npx pm2 start serve --name react-app -- -s build -l 3000 -H 0.0.0.0"
+                    // Start React app using PM2, bind to all interfaces
+                    bat 'npx pm2 start serve --name react-app -- -s build -l 3000 -H 0.0.0.0'
 
-                    // Save PM2 process list and setup auto-start on reboot
-                    bat "cd ${APP_HOME} && npx pm2 save"
+                    // Save PM2 process list
+                    bat 'npx pm2 save'
+
+                    // Create a portable batch file to resurrect PM2 on startup
+                    bat '''
+                    echo @echo off > "%WORKSPACE%\\pm2-startup.bat"
+                    echo set PM2_HOME=%PM2_HOME% >> "%WORKSPACE%\\pm2-startup.bat"
+                    echo npx pm2 resurrect >> "%WORKSPACE%\\pm2-startup.bat"
+                    '''
+
+                    // Register Task Scheduler to auto-start React app on reboot
+                    bat """
+                    powershell -Command "\$action = New-ScheduledTaskAction -Execute '${env.WORKSPACE}\\\\pm2-startup.bat'; \
+                    \$trigger = New-ScheduledTaskTrigger -AtStartup; \
+                    \$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest; \
+                    Register-ScheduledTask -TaskName 'ReactAppPM2' -Action \$action -Trigger \$trigger -Principal \$principal -Force"
+                    """
                 }
             }
         }
+
     }
 
     post {
+        always {
+            echo 'Pipeline finished. Check PM2 to ensure the app is running.'
+        }
         success {
-            echo "✅ React app deployed and running at http://<your-server-ip>:3000"
+            echo '✅ Pipeline succeeded. React app is running via PM2.'
         }
         failure {
-            echo "❌ Pipeline failed. Check logs."
+            echo '❌ Pipeline failed. Check console logs.'
         }
     }
 }
