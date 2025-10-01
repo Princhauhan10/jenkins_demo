@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        NODE_HOME = "C:\\Program Files\\nodejs"  // Update if Node is installed elsewhere
-        PATH = "${env.NODE_HOME};${env.PATH}"
-        PM2_HOME = "C:\\pm2_home"                // PM2 will use this folder for logs & processes
+        // PM2_HOME will be created dynamically in the workspace
+        PM2_HOME = "${env.WORKSPACE}\\.pm2"
+        PATH = "${env.WORKSPACE}\\node_modules\\.bin;${env.PATH}"
     }
 
     stages {
@@ -17,6 +17,8 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 bat 'npm ci'
+                // Install PM2 locally in the workspace if not installed
+                bat 'npm install pm2 --no-save'
             }
         }
 
@@ -38,22 +40,29 @@ pipeline {
                     // Ensure PM2_HOME exists
                     bat "if not exist %PM2_HOME% mkdir %PM2_HOME%"
 
-                    // Remove old process (ignore errors if not found)
+                    // Stop old process (ignore errors)
                     bat 'npx pm2 delete react-app || exit 0'
 
-                    // Start new process using PM2_HOME
-                    bat 'npx pm2 start serve --name react-app -- -s build -l 3000'
+                    // Start React app accessible externally
+                    bat 'npx pm2 start serve --name react-app -- -s build -l 3000 -H 0.0.0.0'
 
-                    // Save the PM2 process list
+                    // Save process list
                     bat 'npx pm2 save'
 
-                    // Register PM2 to run on Windows startup via Task Scheduler
+                    // Create a startup script for Windows using a batch file in the workspace
                     bat '''
-                    powershell -Command "$action = New-ScheduledTaskAction -Execute 'npx' -Argument 'pm2 resurrect'; \
-                    $trigger = New-ScheduledTaskTrigger -AtStartup; \
-                    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest; \
-                    Register-ScheduledTask -TaskName 'ReactAppPM2' -Action $action -Trigger $trigger -Principal $principal -Force"
+                    echo @echo off > "%WORKSPACE%\\pm2-startup.bat"
+                    echo set PM2_HOME=%PM2_HOME% >> "%WORKSPACE%\\pm2-startup.bat"
+                    echo npx pm2 resurrect >> "%WORKSPACE%\\pm2-startup.bat"
                     '''
+
+                    // Register Task Scheduler to run this batch at startup
+                    bat """
+                    powershell -Command "\$action = New-ScheduledTaskAction -Execute '${env.WORKSPACE}\\\\pm2-startup.bat'; \
+                    \$trigger = New-ScheduledTaskTrigger -AtStartup; \
+                    \$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest; \
+                    Register-ScheduledTask -TaskName 'ReactAppPM2' -Action \$action -Trigger \$trigger -Principal \$principal -Force"
+                    """
                 }
             }
         }
@@ -61,7 +70,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline succeeded. App deployed with PM2 and will auto-start on reboot."
+            echo "✅ Pipeline succeeded. React app deployed with PM2, reachable externally, and will auto-start after reboot."
         }
         failure {
             echo "❌ Pipeline failed. Check console logs."
