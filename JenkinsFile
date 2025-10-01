@@ -36,25 +36,20 @@ pipeline {
             }
         }
 
-        stage('Deploy locally') {
+       stage('Deploy locally') {
             steps {
-                script {
-                    // Stop any existing server if running
-                    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-                        bat 'taskkill /F /IM node.exe || echo No previous server running'
-                    }
+                 script {
+                     // Stop existing process if running
+                      bat 'pm2 delete react-app || exit 0'
 
-                    // Install serve globally if not installed
-                    bat 'npm install -g serve'
+                     // Start new process
+                     bat "pm2 start npx --name react-app -- serve -s build -l ${env.SERVE_PORT}"
 
-                    // Start server in background using Jenkins environment variable
-                    bat "start cmd /c serve -s build -l ${env.SERVE_PORT}"
-
-                    echo "React app is now running at http://localhost:${env.SERVE_PORT}"
-                }
-            }
+            echo "React app is now running at http://localhost:${env.SERVE_PORT}"
         }
     }
+}
+
 
     post {
         success {
